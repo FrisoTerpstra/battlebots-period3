@@ -1,5 +1,4 @@
 // --- MOTOR PIN DEFINITIONS ---
-// These match the wiring on the motor shield/driver
 const int MOTOR_A_1 = 3; // Left Motor Control Pin 1
 const int MOTOR_A_2 = 5; // Left Motor Control Pin 2
 const int MOTOR_B_1 = 6; // Right Motor Control Pin 1
@@ -11,14 +10,11 @@ const int ECHO_PIN = 11; // Listens for the reflection
 const int DISTANCE_THRESHOLD = 20; // Distance in cm to trigger the detour
 
 // --- 1. POWER CALIBRATION ---
-// Motors often run at slightly different speeds due to hardware differences.
-// We set 'rightSpeed' slightly lower to ensure the bot drives in a straight line.
+// I set 'rightSpeed' slightly lower to ensure the bot drives in a straight line.
 int leftSpeed = 255;  // Max speed (0-255)
 int rightSpeed = 250; // Reduced slightly to match the left motor
 
 // --- 2. TIMING CALIBRATION ---
-// Since we don't have wheel encoders, we rely on time to determine distance/angles.
-// You must tweak these numbers if the bot turns too far or not far enough.
 int TURN_90_DELAY = 750;   // Time in ms to rotate exactly 90 degrees
 int SIDESTEP_TIME = 1450;  // Time to drive sideways to clear the obstacle's width
 int PASSING_TIME = 2500;   // Time to drive forward to pass the obstacle's length
