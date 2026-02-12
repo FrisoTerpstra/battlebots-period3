@@ -1,0 +1,146 @@
+// --- MOTOR PIN DEFINITIONS ---
+// These match the wiring on the motor shield/driver
+const int MOTOR_A_1 = 3; // Left Motor Control Pin 1
+const int MOTOR_A_2 = 5; // Left Motor Control Pin 2
+const int MOTOR_B_1 = 6; // Right Motor Control Pin 1
+const int MOTOR_B_2 = 9; // Right Motor Control Pin 2
+
+// --- SENSOR PIN DEFINITIONS ---
+const int TRIG_PIN = 10; // Sends the ultrasonic pulse
+const int ECHO_PIN = 11; // Listens for the reflection
+const int DISTANCE_THRESHOLD = 20; // Distance in cm to trigger the detour
+
+// --- 1. POWER CALIBRATION ---
+// Motors often run at slightly different speeds due to hardware differences.
+// We set 'rightSpeed' slightly lower to ensure the bot drives in a straight line.
+int leftSpeed = 255;  // Max speed (0-255)
+int rightSpeed = 250; // Reduced slightly to match the left motor
+
+// --- 2. TIMING CALIBRATION ---
+// Since we don't have wheel encoders, we rely on time to determine distance/angles.
+// You must tweak these numbers if the bot turns too far or not far enough.
+int TURN_90_DELAY = 750;   // Time in ms to rotate exactly 90 degrees
+int SIDESTEP_TIME = 1450;  // Time to drive sideways to clear the obstacle's width
+int PASSING_TIME = 2500;   // Time to drive forward to pass the obstacle's length
+
+void setup() {
+  // Set all motor control pins to output mode
+  pinMode(MOTOR_A_1, OUTPUT);
+  pinMode(MOTOR_A_2, OUTPUT);
+  pinMode(MOTOR_B_1, OUTPUT);
+  pinMode(MOTOR_B_2, OUTPUT);
+  
+  // Set sensor pins
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  
+  Serial.begin(9600); // Start serial communication for debugging
+}
+
+// --- ULTRASONIC SENSOR FUNCTION ---
+// Returns the distance to an object in centimeters
+long getDistance() {
+  // Clear the trigger pin
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  
+  // Send a 10 microsecond pulse to trigger the sensor
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  
+  // Measure how long the echo pin stays HIGH (time for sound to bounce back)
+  long duration = pulseIn(ECHO_PIN, HIGH);
+  
+  // Calculate distance: (Time * Speed of Sound) / 2 (for round trip)
+  // If duration is 0 (no echo), return 400cm to indicate clear path
+  return (duration > 0) ? (duration * 0.034 / 2) : 400; 
+}
+
+void loop() {
+  long distance = getDistance();
+  Serial.print("Distance: ");
+  Serial.println(distance); // Print distance to Serial Monitor for testing
+
+  // --- OBSTACLE AVOIDANCE LOGIC ---
+  if (distance > 0 && distance < DISTANCE_THRESHOLD) {
+    // OBJECT DETECTED! Initiate the pre-programmed "Box" Detour
+    
+    // 0. Stop immediately to avoid collision
+    stopMotors();
+    delay(1000);
+
+    // 1. Turn Right 90 degrees to face away from the object
+    rotateMotorsRight(); 
+    delay(TURN_90_DELAY);
+    stopMotors(); delay(500); // Short pause to stabilize
+
+    // 2. Drive sideways ("Sidestep") to clear the object's width
+    forward(); 
+    delay(SIDESTEP_TIME);
+    stopMotors(); delay(500);
+
+    // 3. Turn Left 90 degrees (Now facing parallel to original path)
+    rotateMotorsLeft(); 
+    delay(TURN_90_DELAY);
+    stopMotors(); delay(500);
+
+    // 4. Drive forward to pass the length of the object
+    forward(); 
+    delay(PASSING_TIME);
+    stopMotors(); delay(500);
+
+    // 5. Turn Left 90 degrees (Now facing back toward the original line of travel)
+    rotateMotorsLeft(); 
+    delay(TURN_90_DELAY);
+    stopMotors(); delay(500);
+
+    // 6. Drive forward ("Sidestep") to return to the original path line
+    forward(); 
+    delay(SIDESTEP_TIME);
+    stopMotors(); delay(500);
+
+    // 7. Turn Right 90 degrees (Straighten out to resume original heading)
+    rotateMotorsRight(); 
+    delay(TURN_90_DELAY);
+    stopMotors(); delay(1000); // Detour complete
+
+  } else {
+    // NO OBJECT: Just keep driving forward
+    forward();
+  }
+  
+  delay(50); // Small delay to prevent sensor noise
+}
+
+// --- MOVEMENT HELPER FUNCTIONS ---
+
+void forward() {
+  // Drives both motors forward using the calibrated speeds
+  analogWrite(MOTOR_A_1, 0); 
+  analogWrite(MOTOR_A_2, leftSpeed);
+  analogWrite(MOTOR_B_1, rightSpeed); 
+  analogWrite(MOTOR_B_2, 0);
+}
+
+void rotateMotorsLeft() {
+  // Pivot on the spot: Left motor pulls back, Right motor pushes forward
+  analogWrite(MOTOR_A_1, leftSpeed); 
+  analogWrite(MOTOR_A_2, 0);
+  analogWrite(MOTOR_B_1, rightSpeed); 
+  analogWrite(MOTOR_B_2, 0);
+}
+
+void rotateMotorsRight() {
+  // Pivot on the spot: Left motor pushes forward, Right motor pulls back
+  analogWrite(MOTOR_A_1, 0); 
+  analogWrite(MOTOR_A_2, leftSpeed);
+  analogWrite(MOTOR_B_1, 0); 
+  analogWrite(MOTOR_B_2, rightSpeed);
+}
+
+void stopMotors() {
+  // Cut power to all motor pins
+  analogWrite(MOTOR_A_1, 0); analogWrite(MOTOR_A_2, 0);
+  analogWrite(MOTOR_B_1, 0); analogWrite(MOTOR_B_2, 0);
+}
