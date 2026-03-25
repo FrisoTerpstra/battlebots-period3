@@ -109,49 +109,92 @@ void debugPrint() {
 // LINE FOLLOWING — identical to original
 // -------------------------------------------------------
 
-void followLine() {
-  // --- CENTER: D4 or D5 — full speed ---
-  if (val[3] > threshold || val[4] > threshold) {
-    forward();
-  }
-  // --- SLIGHT DRIFT ---
-  else if (val[2] > threshold) {
-    lastDirection = 1;
-    turnRightGentle();
-  }
-  else if (val[5] > threshold) {
-    lastDirection = -1;
-    turnLeftGentle();
-  }
-  // --- MEDIUM DRIFT ---
-  else if (val[1] > threshold) {
-    lastDirection = 1;
-    turnRightMedium();
-  }
-  else if (val[6] > threshold) {
-    lastDirection = -1;
-    turnLeftMedium();
-  }
-  // --- EXTREME DRIFT ---
-  else if (val[0] > threshold) {
-    lastDirection = 1;
-    rotateMotorsRight();
-  }
-  else if (val[7] > threshold) {
-    lastDirection = -1;
-    rotateMotorsLeft();
-  }
-  // --- LOST LINE ---
-  else {
-    if (lastDirection == 1) {
-      rotateMotorsRight();
-    } else if (lastDirection == -1) {
-      rotateMotorsLeft();
-    } else {
-      stopMotors();
+void loop() {
+  unsigned long currentTime = millis();
+  if (currentTime - previousLoopTime >= LOOP_INTERVAL) {
+    previousLoopTime = currentTime;
+
+    readSensors();
+    debugPrint();
+
+    // --- STATE: FOLLOW ---
+    if (state == FOLLOW) {
+      if (atIntersection()) {
+        deadEndCount = 0;
+        pendingTurn  = chooseTurn();
+        if (pendingTurn == 0) {
+          followLine();
+        } else {
+          forward();
+          state      = CROSSING;
+          stateTimer = currentTime;
+        }
+      } else if (deadEnd()) {
+        deadEndCount++;
+        if (deadEndCount >= DEAD_END_LIMIT) {
+          deadEndCount = 0;
+          state = RECOVER;
+        } else {
+          followLine();
+        }
+      } else {
+        deadEndCount = 0;
+        followLine();
+      }
+    }
+
+    // --- STATE: CROSSING ---
+    else if (state == CROSSING) {
+      forward();
+      if (currentTime - stateTimer >= CROSSING_TIME) {
+        state      = TURNING;
+        stateTimer = currentTime;
+      }
+    }
+
+    // --- STATE: TURNING ---
+    else if (state == TURNING) {
+      unsigned long needed = (pendingTurn == 2) ? TURN_180_TIME : TURN_90_TIME;
+      if (pendingTurn == -1) {
+        rotateMotorsLeft();
+        lastDirection = -1;
+      } else {
+        rotateMotorsRight();
+        lastDirection = 1;
+      }
+      if (currentTime - stateTimer >= needed) {
+        state = SEARCH;
+      }
+    }
+
+    // --- STATE: SEARCH ---
+    else if (state == SEARCH) {
+      if (pendingTurn == -1) {
+        rotateMotorsLeft();
+      } else {
+        rotateMotorsRight();
+      }
+      if (anyActive(2, 5)) {
+        state = FOLLOW;
+      }
+    }
+
+    // --- STATE: RECOVER ---
+    else if (state == RECOVER) {
+      if (lastDirection == 1) {
+        rotateMotorsRight();
+      } else if (lastDirection == -1) {
+        rotateMotorsLeft();
+      } else {
+        stopMotors();
+      }
+      if (!deadEnd()) {
+        state = FOLLOW;
+      }
     }
   }
 }
+
 
 // -------------------------------------------------------
 // SETUP
