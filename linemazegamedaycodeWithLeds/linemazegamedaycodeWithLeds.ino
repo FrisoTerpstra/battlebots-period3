@@ -52,25 +52,46 @@ int           pendingTurn = 0;
 // -------------------------------------------------------
 
 void readSensors() {
-  for (int i = 0; i < 8; i++) val[i] = analogRead(SENSOR_PINS[i]);
+  for (int i = 0; i < 8; i++) {
+    val[i] = analogRead(SENSOR_PINS[i]);
+  }
 }
 
-bool on(int i) { return val[i] > threshold; }
+bool on(int i) {
+  return val[i] > threshold;
+}
 
 bool anyActive(int a, int b) {
-  for (int i = a; i <= b; i++) if (on(i)) return true;
+  for (int i = a; i <= b; i++) {
+    if (on(i)) {
+      return true;
+    }
+  }
   return false;
 }
+
 int countActive() {
   int n = 0;
-  for (int i = 0; i < 8; i++) if (on(i)) n++;
+  for (int i = 0; i < 8; i++) {
+    if (on(i)) {
+      n++;
+    }
+  }
   return n;
 }
 
 // Junction only fires when outermost edge AND centre sensors active together
-bool rightOpen()    { return on(0); }
-bool leftOpen()     { return on(7); }
-bool straightOpen() { return anyActive(2, 5); }
+bool rightOpen() {
+  return on(0);
+}
+
+bool leftOpen() {
+  return on(7);
+}
+
+bool straightOpen() {
+  return anyActive(2, 5);
+}
 
 bool atIntersection() {
   bool centreActive = anyActive(2, 5);
@@ -78,15 +99,22 @@ bool atIntersection() {
   return centreActive && edgeActive;
 }
 
-bool deadEnd() { return countActive() == 0; }
+bool deadEnd() {
+  return countActive() == 0;
+}
 
 // --- RIGHT-HAND RULE ---
 // Priority: right > straight > left > U-turn
 int chooseTurn() {
-  if (rightOpen())    return  1;
-  if (straightOpen()) return  0;
-  if (leftOpen())     return -1;
-  return 2;
+  if (rightOpen()) {
+    return 1;
+  } else if (straightOpen()) {
+    return 0;
+  } else if (leftOpen()) {
+    return -1;
+  } else {
+    return 2;
+  }
 }
 
 // -------------------------------------------------------
