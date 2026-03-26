@@ -61,25 +61,46 @@ int           pendingTurn = 0;
 // -------------------------------------------------------
 
 void readSensors() {
-  for (int i = 0; i < 8; i++) val[i] = analogRead(SENSOR_PINS[i]);
+  for (int i = 0; i < 8; i++) {
+    val[i] = analogRead(SENSOR_PINS[i]);
+  }
 }
 
-bool on(int i) { return val[i] > threshold; }
+bool on(int i) {
+  return val[i] > threshold;
+}
 
 bool anyActive(int a, int b) {
-  for (int i = a; i <= b; i++) if (on(i)) return true;
+  for (int i = a; i <= b; i++) {
+    if (on(i)) {
+      return true;
+    }
+  }
   return false;
 }
+
 int countActive() {
   int n = 0;
-  for (int i = 0; i < 8; i++) if (on(i)) n++;
+  for (int i = 0; i < 8; i++) {
+    if (on(i)) {
+      n++;
+    }
+  }
   return n;
 }
 
 // Junction only fires when outermost edge AND centre sensors active together
-bool rightOpen()    { return on(0); }
-bool leftOpen()     { return on(7); }
-bool straightOpen() { return anyActive(2, 5); }
+bool rightOpen() {
+  return on(0);
+}
+
+bool leftOpen() {
+  return on(7);
+}
+
+bool straightOpen() {
+  return anyActive(2, 5);
+}
 
 bool atIntersection() {
   bool centreActive = anyActive(2, 5);
@@ -87,15 +108,22 @@ bool atIntersection() {
   return centreActive && edgeActive;
 }
 
-bool deadEnd() { return countActive() == 0; }
+bool deadEnd() {
+  return countActive() == 0;
+}
 
 // --- RIGHT-HAND RULE ---
 // Priority: right > straight > left > U-turn
 int chooseTurn() {
-  if (rightOpen())    return  1;
-  if (straightOpen()) return  0;
-  if (leftOpen())     return -1;
-  return 2;
+  if (rightOpen()) {
+    return 1;
+  } else if (straightOpen()) {
+    return 0;
+  } else if (leftOpen()) {
+    return -1;
+  } else {
+    return 2;
+  }
 }
 
 // -------------------------------------------------------
@@ -244,10 +272,24 @@ void loop() {
         break;
 
       case TURNING: {
-        unsigned long needed = (pendingTurn == 2) ? TURN_180_TIME : TURN_90_TIME;
-        if (pendingTurn == -1) { rotateMotorsLeft();  lastDirection = -1; }
-        else                   { rotateMotorsRight(); lastDirection =  1; }
-        if (currentTime - stateTimer >= needed) state = SEARCH;
+        unsigned long needed;
+        if (pendingTurn == 2) {
+          needed = TURN_180_TIME;
+        } else {
+          needed = TURN_90_TIME;
+        }
+
+        if (pendingTurn == -1) { 
+          rotateMotorsLeft();  
+          lastDirection = -1; 
+        } else { 
+          rotateMotorsRight(); 
+          lastDirection = 1; 
+        }
+
+        if (currentTime - stateTimer >= needed) {
+          state = SEARCH;
+        }
         break;
       }
 
@@ -272,80 +314,102 @@ void loop() {
 // -------------------------------------------------------
 
 void forward() {
-  showForwardLights();
-  analogWrite(MOTOR_A_1, 0);          analogWrite(MOTOR_A_2, leftSpeed);
-  analogWrite(MOTOR_B_1, rightSpeed); analogWrite(MOTOR_B_2, 0);
+  showForwardLights(); // update LEDs to show direction
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, leftSpeed);
+  analogWrite(MOTOR_B_1, rightSpeed);
+  analogWrite(MOTOR_B_2, 0);
 }
+
 void turnLeftGentle() {
-  showLeftLights();
+  showLeftLights(); // update LEDs to show direction
   // Slow inner wheel by 120 to handle tight curves at high speed
-  analogWrite(MOTOR_A_1, 0);                analogWrite(MOTOR_A_2, leftSpeed - 120);
-  analogWrite(MOTOR_B_1, rightSpeed);       analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, leftSpeed - 120);
+  analogWrite(MOTOR_B_1, rightSpeed);
+  analogWrite(MOTOR_B_2, 0);
 }
+
 void turnRightGentle() {
-  showRightLights();
+  showRightLights(); // update LEDs to show direction
   // Slow inner wheel by 120 to handle tight curves at high speed
-  analogWrite(MOTOR_A_1, 0);                analogWrite(MOTOR_A_2, leftSpeed);
-  analogWrite(MOTOR_B_1, rightSpeed - 120); analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, leftSpeed);
+  analogWrite(MOTOR_B_1, rightSpeed - 120);
+  analogWrite(MOTOR_B_2, 0);
 }
+
 void turnLeftMedium() {
-  showLeftLights();
+  showLeftLights(); // update LEDs to show direction
   // Brake inner wheel completely for sharp corners
-  analogWrite(MOTOR_A_1, 0); analogWrite(MOTOR_A_2, 0);
-  analogWrite(MOTOR_B_1, rightSpeed); analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, 0);
+  analogWrite(MOTOR_B_1, rightSpeed);
+  analogWrite(MOTOR_B_2, 0);
 }
+
 void turnRightMedium() {
-  showRightLights();
+  showRightLights(); // update LEDs to show direction
   // Brake inner wheel completely for sharp corners
-  analogWrite(MOTOR_A_1, 0);          analogWrite(MOTOR_A_2, leftSpeed);
-  analogWrite(MOTOR_B_1, 0);          analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, leftSpeed);
+  analogWrite(MOTOR_B_1, 0);
+  analogWrite(MOTOR_B_2, 0);
 }
+
 void rotateMotorsLeft() {
-  showLeftLights();
+  showLeftLights(); // update LEDs to show direction
   // Emergency pivot — reverse left wheel, drive right wheel
-  analogWrite(MOTOR_A_1, leftSpeed);  analogWrite(MOTOR_A_2, 0);
-  analogWrite(MOTOR_B_1, rightSpeed); analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, leftSpeed);
+  analogWrite(MOTOR_A_2, 0);
+  analogWrite(MOTOR_B_1, rightSpeed);
+  analogWrite(MOTOR_B_2, 0);
 }
+
 void rotateMotorsRight() {
-  showRightLights();
+  showRightLights(); // update LEDs to show direction
   // Emergency pivot — drive left wheel, reverse right wheel
-  analogWrite(MOTOR_A_1, 0);          analogWrite(MOTOR_A_2, leftSpeed);
-  analogWrite(MOTOR_B_1, 0);          analogWrite(MOTOR_B_2, rightSpeed);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, leftSpeed);
+  analogWrite(MOTOR_B_1, 0);
+  analogWrite(MOTOR_B_2, rightSpeed);
 }
+
 void stopMotors() {
-  showBackwardLights();
-  analogWrite(MOTOR_A_1, 0); analogWrite(MOTOR_A_2, 0);
-  analogWrite(MOTOR_B_1, 0); analogWrite(MOTOR_B_2, 0);
+  showBackwardLights(); // update LEDs to show direction
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, 0);
+  analogWrite(MOTOR_B_1, 0);
+  analogWrite(MOTOR_B_2, 0);
 }
+
+// -------------------------------------------------------
+// LIGHT FUNCTIONS
+// -------------------------------------------------------
 
 void showForwardLights() {
   pixels.clear();
-  pixels.setPixelColor(2, pixels.Color(100, 100, 100));   // front-right = green
-  pixels.setPixelColor(3, pixels.Color(100, 100, 100));   // front-left  = green
+  pixels.setPixelColor(2, pixels.Color(100, 100, 100)); // front-right = white
+  pixels.setPixelColor(3, pixels.Color(100, 100, 100)); // front-left  = white
   pixels.show();
 }
 
 void showBackwardLights() {
   pixels.clear();
-  pixels.setPixelColor(1, pixels.Color(0, 100, 0));   // back-right = red
-  pixels.setPixelColor(0, pixels.Color(0, 100, 0));   // back-left  = red
+  pixels.setPixelColor(1, pixels.Color(100, 0, 0)); // back-right = red
+  pixels.setPixelColor(0, pixels.Color(100, 0, 0)); // back-left  = red
   pixels.show();
 }
 
 void showLeftLights() {
   pixels.clear();
-  pixels.setPixelColor(3, pixels.Color(65, 100, 0)); // front-left = orange
+  pixels.setPixelColor(3, pixels.Color(65, 40, 0)); // front-left = orange
   pixels.show();
 }
 
 void showRightLights() {
   pixels.clear();
-  pixels.setPixelColor(2, pixels.Color(65, 100, 0)); // front-right = orange
-  pixels.show();
-}
-
-void lightsOff() {
-  pixels.clear();
+  pixels.setPixelColor(2, pixels.Color(65, 40, 0)); // front-right = orange
   pixels.show();
 }
 
