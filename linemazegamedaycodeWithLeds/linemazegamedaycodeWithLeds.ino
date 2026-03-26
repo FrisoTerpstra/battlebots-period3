@@ -254,10 +254,24 @@ void loop() {
         break;
 
       case TURNING: {
-        unsigned long needed = (pendingTurn == 2) ? TURN_180_TIME : TURN_90_TIME;
-        if (pendingTurn == -1) { rotateMotorsLeft();  lastDirection = -1; }
-        else                   { rotateMotorsRight(); lastDirection =  1; }
-        if (currentTime - stateTimer >= needed) state = SEARCH;
+        unsigned long needed;
+        if (pendingTurn == 2) {
+          needed = TURN_180_TIME;
+        } else {
+          needed = TURN_90_TIME;
+        }
+
+        if (pendingTurn == -1) { 
+          rotateMotorsLeft();  
+          lastDirection = -1; 
+        } else { 
+          rotateMotorsRight(); 
+          lastDirection = 1; 
+        }
+
+        if (currentTime - stateTimer >= needed) {
+          state = SEARCH;
+        }
         break;
       }
 
