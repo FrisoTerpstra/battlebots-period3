@@ -8,15 +8,6 @@ Adafruit_NeoPixel pixels(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 SoftwareSerial bt(2, 4);
 
-
-bool fullBlackActive = false;
-long fullBlackStart = 0;
-const long FINISH_TIME = 80;
-bool finished = false;
-unsigned long runStartTime = 0;
-const unsigned long FINISH_ARM_TIME = 3000; // ignore finish for first 3 seconds
-bool startAreaLeft = false;
-
 // --- MOTOR PIN DEFINITIONS ---
 const int MOTOR_A_1 = 3;
 const int MOTOR_A_2 = 5;
@@ -28,11 +19,11 @@ const int SENSOR_PINS[] = {A0, A1, A2, A3, A4, A5, A6, A7};
 int val[8];
 
 // --- SENSITIVITY CALIBRATION ---
-int threshold = 800;
+int threshold = 900;
 
 // --- RACE SPEED CALIBRATION ---
-int leftSpeed  = 255;
-int rightSpeed = 250;
+int leftSpeed  = 235;
+int rightSpeed = 230;
 
 // --- DIRECTION MEMORY ---
 int lastDirection = 0;
@@ -61,25 +52,46 @@ int           pendingTurn = 0;
 // -------------------------------------------------------
 
 void readSensors() {
-  for (int i = 0; i < 8; i++) val[i] = analogRead(SENSOR_PINS[i]);
+  for (int i = 0; i < 8; i++) {
+    val[i] = analogRead(SENSOR_PINS[i]);
+  }
 }
 
-bool on(int i) { return val[i] > threshold; }
+bool on(int i) {
+  return val[i] > threshold;
+}
 
 bool anyActive(int a, int b) {
-  for (int i = a; i <= b; i++) if (on(i)) return true;
+  for (int i = a; i <= b; i++) {
+    if (on(i)) {
+      return true;
+    }
+  }
   return false;
 }
+
 int countActive() {
   int n = 0;
-  for (int i = 0; i < 8; i++) if (on(i)) n++;
+  for (int i = 0; i < 8; i++) {
+    if (on(i)) {
+      n++;
+    }
+  }
   return n;
 }
 
 // Junction only fires when outermost edge AND centre sensors active together
-bool rightOpen()    { return on(0); }
-bool leftOpen()     { return on(7); }
-bool straightOpen() { return anyActive(2, 5); }
+bool rightOpen() {
+  return on(0) || on(1);
+}
+
+bool leftOpen() {
+  return on(7) && on(6);
+}
+
+bool straightOpen() {
+  return anyActive(2, 5);
+}
 
 bool atIntersection() {
   bool centreActive = anyActive(2, 5);
@@ -87,15 +99,22 @@ bool atIntersection() {
   return centreActive && edgeActive;
 }
 
-bool deadEnd() { return countActive() == 0; }
+bool deadEnd() {
+  return countActive() == 0;
+}
 
 // --- RIGHT-HAND RULE ---
 // Priority: right > straight > left > U-turn
 int chooseTurn() {
-  if (rightOpen())    return  1;
-  if (straightOpen()) return  0;
-  if (leftOpen())     return -1;
-  return 2;
+  if (leftOpen()) {
+    return -1;
+  } else if (straightOpen()) {
+    return 0;
+  } else if (rightOpen()) {
+    return 1;
+  } else {
+    return 2;
+  }
 }
 
 // -------------------------------------------------------
@@ -180,8 +199,6 @@ void setup() {
   Serial.begin(9600);
   bt.begin(9600);
 
-  runStartTime = millis();
-
   pixels.begin();
   pixels.clear();
   pixels.show();
@@ -199,13 +216,6 @@ void loop() {
     previousLoopTime = currentTime;
 
     readSensors();
-    updateFinish(currentTime);
-
-    if (finished) {
-      stopMotors();
-      return;
-    }
-
     debugPrint();
 
     switch (state) {
@@ -272,123 +282,101 @@ void loop() {
 // -------------------------------------------------------
 
 void forward() {
-  showForwardLights();
-  analogWrite(MOTOR_A_1, 0);          analogWrite(MOTOR_A_2, leftSpeed);
-  analogWrite(MOTOR_B_1, rightSpeed); analogWrite(MOTOR_B_2, 0);
+  showForwardLights(); // update LEDs to show direction
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, leftSpeed);
+  analogWrite(MOTOR_B_1, rightSpeed);
+  analogWrite(MOTOR_B_2, 0);
 }
+
 void turnLeftGentle() {
-  showLeftLights();
+  showLeftLights(); // update LEDs to show direction
   // Slow inner wheel by 120 to handle tight curves at high speed
-  analogWrite(MOTOR_A_1, 0);                analogWrite(MOTOR_A_2, leftSpeed - 120);
-  analogWrite(MOTOR_B_1, rightSpeed);       analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, leftSpeed - 120);
+  analogWrite(MOTOR_B_1, rightSpeed);
+  analogWrite(MOTOR_B_2, 0);
 }
+
 void turnRightGentle() {
-  showRightLights();
+  showRightLights(); // update LEDs to show direction
   // Slow inner wheel by 120 to handle tight curves at high speed
-  analogWrite(MOTOR_A_1, 0);                analogWrite(MOTOR_A_2, leftSpeed);
-  analogWrite(MOTOR_B_1, rightSpeed - 120); analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, leftSpeed);
+  analogWrite(MOTOR_B_1, rightSpeed - 120);
+  analogWrite(MOTOR_B_2, 0);
 }
+
 void turnLeftMedium() {
-  showLeftLights();
+  showLeftLights(); // update LEDs to show direction
   // Brake inner wheel completely for sharp corners
-  analogWrite(MOTOR_A_1, 0); analogWrite(MOTOR_A_2, 0);
-  analogWrite(MOTOR_B_1, rightSpeed); analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, 0);
+  analogWrite(MOTOR_B_1, rightSpeed);
+  analogWrite(MOTOR_B_2, 0);
 }
+
 void turnRightMedium() {
-  showRightLights();
+  showRightLights(); // update LEDs to show direction
   // Brake inner wheel completely for sharp corners
-  analogWrite(MOTOR_A_1, 0);          analogWrite(MOTOR_A_2, leftSpeed);
-  analogWrite(MOTOR_B_1, 0);          analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, leftSpeed);
+  analogWrite(MOTOR_B_1, 0);
+  analogWrite(MOTOR_B_2, 0);
 }
+
 void rotateMotorsLeft() {
-  showLeftLights();
+  showLeftLights(); // update LEDs to show direction
   // Emergency pivot — reverse left wheel, drive right wheel
-  analogWrite(MOTOR_A_1, leftSpeed);  analogWrite(MOTOR_A_2, 0);
-  analogWrite(MOTOR_B_1, rightSpeed); analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, leftSpeed);
+  analogWrite(MOTOR_A_2, 0);
+  analogWrite(MOTOR_B_1, rightSpeed);
+  analogWrite(MOTOR_B_2, 0);
 }
+
 void rotateMotorsRight() {
-  showRightLights();
+  showRightLights(); // update LEDs to show direction
   // Emergency pivot — drive left wheel, reverse right wheel
-  analogWrite(MOTOR_A_1, 0);          analogWrite(MOTOR_A_2, leftSpeed);
-  analogWrite(MOTOR_B_1, 0);          analogWrite(MOTOR_B_2, rightSpeed);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, leftSpeed);
+  analogWrite(MOTOR_B_1, 0);
+  analogWrite(MOTOR_B_2, rightSpeed);
 }
+
 void stopMotors() {
-  showBackwardLights();
-  analogWrite(MOTOR_A_1, 0); analogWrite(MOTOR_A_2, 0);
-  analogWrite(MOTOR_B_1, 0); analogWrite(MOTOR_B_2, 0);
+  showBackwardLights(); // update LEDs to show direction
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, 0);
+  analogWrite(MOTOR_B_1, 0);
+  analogWrite(MOTOR_B_2, 0);
 }
+
+// -------------------------------------------------------
+// LIGHT FUNCTIONS
+// -------------------------------------------------------
 
 void showForwardLights() {
   pixels.clear();
-  pixels.setPixelColor(2, pixels.Color(100, 100, 100));   // front-right = green
-  pixels.setPixelColor(3, pixels.Color(100, 100, 100));   // front-left  = green
+  pixels.setPixelColor(2, pixels.Color(100, 100, 100)); // front-right = white
+  pixels.setPixelColor(3, pixels.Color(100, 100, 100)); // front-left  = white
   pixels.show();
 }
 
 void showBackwardLights() {
   pixels.clear();
-  pixels.setPixelColor(1, pixels.Color(0, 100, 0));   // back-right = red
-  pixels.setPixelColor(0, pixels.Color(0, 100, 0));   // back-left  = red
+  pixels.setPixelColor(1, pixels.Color(100, 0, 0)); // back-right = red
+  pixels.setPixelColor(0, pixels.Color(100, 0, 0)); // back-left  = red
   pixels.show();
 }
 
 void showLeftLights() {
   pixels.clear();
-  pixels.setPixelColor(3, pixels.Color(65, 100, 0)); // front-left = orange
+  pixels.setPixelColor(3, pixels.Color(65, 40, 0)); // front-left = orange
   pixels.show();
 }
 
 void showRightLights() {
   pixels.clear();
-  pixels.setPixelColor(2, pixels.Color(65, 100, 0)); // front-right = orange
+  pixels.setPixelColor(2, pixels.Color(65, 40, 0)); // front-right = orange
   pixels.show();
-}
-
-void lightsOff() {
-  pixels.clear();
-  pixels.show();
-}
-
-bool fullBlack() {
-  for (int i = 0; i < 8; i++) {
-    if (val[i] <= threshold) return false;
-  }
-  return true;
-}
-
-void updateFinish(unsigned long currentTime) {
-  bool isFullBlack = fullBlack();
-
-  // First, wait until robot leaves the start area
-  if (!startAreaLeft) {
-    if (!isFullBlack) {
-      startAreaLeft = true;
-      Serial.println("START AREA LEFT");
-    }
-    return;
-  }
-
-  // Optional extra lockout after leaving start
-  if (currentTime - runStartTime < FINISH_ARM_TIME) {
-    fullBlackActive = false;
-    return;
-  }
-
-  if (isFullBlack) {
-    if (!fullBlackActive) {
-      fullBlackActive = true;
-      fullBlackStart = currentTime;
-      Serial.println("FULL BLACK START");
-    }
-
-    if (currentTime - fullBlackStart >= FINISH_TIME) {
-      finished = true;
-      Serial.println("FINISH DETECTED");
-    }
-  } else {
-    if (fullBlackActive) {
-      Serial.println("FULL BLACK LOST");
-    }
-    fullBlackActive = false;
-  }
 }
