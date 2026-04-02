@@ -1,5 +1,6 @@
 #include <SoftwareSerial.h>
 #include <Adafruit_NeoPixel.h>
+#include <Servo.h>
 
 #define LED_PIN 7
 #define NUM_LEDS 4
@@ -7,6 +8,22 @@
 Adafruit_NeoPixel pixels(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
 
 SoftwareSerial bt(2, 4);
+
+const int GRIPPER_PIN = 10;
+const int TRIG_PIN = 11;
+const int ECHO_PIN = 12;
+const int OBJECT_DISTANCE_CM = 40;
+
+Servo gripper;
+
+const int GRIPPER_OPEN_US = 1800;
+const int GRIPPER_CLOSED_US = 1100;
+
+const unsigned long START_FORWARD_1 = 1600;
+const unsigned long START_GRAB_WAIT = 800;
+const unsigned long START_TURN_LEFT = 575;
+const unsigned long START_FORWARD_2 = 1200;
+const unsigned long WAIT_FOR_ROBOT_LEAVES = 3000;
 
 // --- MOTOR PIN DEFINITIONS ---
 const int MOTOR_A_1 = 3;
@@ -22,8 +39,8 @@ int val[8];
 int threshold = 900;
 
 // --- RACE SPEED CALIBRATION ---
-int leftSpeed  = 235;
-int rightSpeed = 230;
+int leftSpeed  = 240;
+int rightSpeed = 222;
 
 // --- DIRECTION MEMORY ---
 int lastDirection = 0;
@@ -34,8 +51,8 @@ const long LOOP_INTERVAL = 10;
 
 // --- MAZE TIMING ---
 const unsigned long CROSSING_TIME = 200;
-const unsigned long TURN_90_TIME  = 400;
-const unsigned long TURN_180_TIME = 800;
+const unsigned long TURN_90_TIME  = 600;
+const unsigned long TURN_180_TIME = 1000;
 
 // --- DEAD END COUNTER ---
 int deadEndCount = 0;
@@ -45,7 +62,7 @@ const int DEAD_END_LIMIT = 30;
 enum State { FOLLOW, CROSSING, TURNING, SEARCH, RECOVER };
 State state = FOLLOW;
 unsigned long stateTimer  = 0;
-int           pendingTurn = 0;
+int pendingTurn = 0;
 
 // -------------------------------------------------------
 // SENSOR HELPERS
@@ -80,13 +97,12 @@ int countActive() {
   return n;
 }
 
-// Junction only fires when outermost edge AND centre sensors active together
 bool rightOpen() {
   return on(0) || on(1);
 }
 
 bool leftOpen() {
-  return on(7) && on(6);
+  return on(7) && on(6) && on(5);
 }
 
 bool straightOpen() {
@@ -103,8 +119,7 @@ bool deadEnd() {
   return countActive() == 0;
 }
 
-// --- RIGHT-HAND RULE ---
-// Priority: right > straight > left > U-turn
+// Priority: left > straight > right > U-turn
 int chooseTurn() {
   if (leftOpen()) {
     return -1;
@@ -141,15 +156,37 @@ void debugPrint() {
 }
 
 // -------------------------------------------------------
-// LINE FOLLOWING — identical to original
+// START HELPERS
+// -------------------------------------------------------
+
+long getDistanceCM() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+  if (duration == 0) return 999;
+  return duration * 0.04 / 2;
+}
+
+void openGripper() {
+  gripper.writeMicroseconds(GRIPPER_OPEN_US);
+}
+
+void closeGripper() {
+  gripper.writeMicroseconds(GRIPPER_CLOSED_US);
+}
+
+// -------------------------------------------------------
+// LINE FOLLOWING
 // -------------------------------------------------------
 
 void followLine() {
-  // --- CENTER: D4 or D5 — full speed ---
   if (val[3] > threshold || val[4] > threshold) {
     forward();
   }
-  // --- SLIGHT DRIFT ---
   else if (val[2] > threshold) {
     lastDirection = 1;
     turnRightGentle();
@@ -158,7 +195,6 @@ void followLine() {
     lastDirection = -1;
     turnLeftGentle();
   }
-  // --- MEDIUM DRIFT ---
   else if (val[1] > threshold) {
     lastDirection = 1;
     turnRightMedium();
@@ -167,7 +203,6 @@ void followLine() {
     lastDirection = -1;
     turnLeftMedium();
   }
-  // --- EXTREME DRIFT ---
   else if (val[0] > threshold) {
     lastDirection = 1;
     rotateMotorsRight();
@@ -176,7 +211,6 @@ void followLine() {
     lastDirection = -1;
     rotateMotorsLeft();
   }
-  // --- LOST LINE ---
   else {
     if (lastDirection == 1) {
       rotateMotorsRight();
@@ -196,13 +230,46 @@ void setup() {
   pinMode(MOTOR_A_1, OUTPUT); pinMode(MOTOR_A_2, OUTPUT);
   pinMode(MOTOR_B_1, OUTPUT); pinMode(MOTOR_B_2, OUTPUT);
   for (int i = 0; i < 8; i++) pinMode(SENSOR_PINS[i], INPUT);
+
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+
   Serial.begin(9600);
   bt.begin(9600);
 
   pixels.begin();
   pixels.clear();
   pixels.show();
-  
+
+  gripper.attach(GRIPPER_PIN);
+  openGripper();
+
+  stopMotors();
+
+  while (true) {
+    long distance = getDistanceCM();
+    if (distance <= OBJECT_DISTANCE_CM) {
+      break;
+    }
+    delay(50);
+  }
+
+  delay(WAIT_FOR_ROBOT_LEAVES);
+  forward();
+  delay(START_FORWARD_1);
+
+  stopMotors();
+  closeGripper();
+  delay(START_GRAB_WAIT);
+
+  rotateMotorsLeft();
+  delay(START_TURN_LEFT);
+
+  forward();
+  delay(START_FORWARD_2);
+
+  stopMotors();
+
   Serial.println("System Online");
 }
 
@@ -282,7 +349,7 @@ void loop() {
 // -------------------------------------------------------
 
 void forward() {
-  showForwardLights(); // update LEDs to show direction
+  showForwardLights();
   analogWrite(MOTOR_A_1, 0);
   analogWrite(MOTOR_A_2, leftSpeed);
   analogWrite(MOTOR_B_1, rightSpeed);
@@ -290,8 +357,7 @@ void forward() {
 }
 
 void turnLeftGentle() {
-  showLeftLights(); // update LEDs to show direction
-  // Slow inner wheel by 120 to handle tight curves at high speed
+  showLeftLights();
   analogWrite(MOTOR_A_1, 0);
   analogWrite(MOTOR_A_2, leftSpeed - 120);
   analogWrite(MOTOR_B_1, rightSpeed);
@@ -299,8 +365,7 @@ void turnLeftGentle() {
 }
 
 void turnRightGentle() {
-  showRightLights(); // update LEDs to show direction
-  // Slow inner wheel by 120 to handle tight curves at high speed
+  showRightLights();
   analogWrite(MOTOR_A_1, 0);
   analogWrite(MOTOR_A_2, leftSpeed);
   analogWrite(MOTOR_B_1, rightSpeed - 120);
@@ -308,8 +373,7 @@ void turnRightGentle() {
 }
 
 void turnLeftMedium() {
-  showLeftLights(); // update LEDs to show direction
-  // Brake inner wheel completely for sharp corners
+  showLeftLights();
   analogWrite(MOTOR_A_1, 0);
   analogWrite(MOTOR_A_2, 0);
   analogWrite(MOTOR_B_1, rightSpeed);
@@ -317,8 +381,7 @@ void turnLeftMedium() {
 }
 
 void turnRightMedium() {
-  showRightLights(); // update LEDs to show direction
-  // Brake inner wheel completely for sharp corners
+  showRightLights();
   analogWrite(MOTOR_A_1, 0);
   analogWrite(MOTOR_A_2, leftSpeed);
   analogWrite(MOTOR_B_1, 0);
@@ -326,8 +389,7 @@ void turnRightMedium() {
 }
 
 void rotateMotorsLeft() {
-  showLeftLights(); // update LEDs to show direction
-  // Emergency pivot — reverse left wheel, drive right wheel
+  showLeftLights();
   analogWrite(MOTOR_A_1, leftSpeed);
   analogWrite(MOTOR_A_2, 0);
   analogWrite(MOTOR_B_1, rightSpeed);
@@ -335,8 +397,7 @@ void rotateMotorsLeft() {
 }
 
 void rotateMotorsRight() {
-  showRightLights(); // update LEDs to show direction
-  // Emergency pivot — drive left wheel, reverse right wheel
+  showRightLights();
   analogWrite(MOTOR_A_1, 0);
   analogWrite(MOTOR_A_2, leftSpeed);
   analogWrite(MOTOR_B_1, 0);
@@ -344,7 +405,7 @@ void rotateMotorsRight() {
 }
 
 void stopMotors() {
-  showBackwardLights(); // update LEDs to show direction
+  showBackwardLights();
   analogWrite(MOTOR_A_1, 0);
   analogWrite(MOTOR_A_2, 0);
   analogWrite(MOTOR_B_1, 0);
@@ -357,26 +418,26 @@ void stopMotors() {
 
 void showForwardLights() {
   pixels.clear();
-  pixels.setPixelColor(2, pixels.Color(100, 100, 100)); // front-right = white
-  pixels.setPixelColor(3, pixels.Color(100, 100, 100)); // front-left  = white
+  pixels.setPixelColor(2, pixels.Color(100, 100, 100));
+  pixels.setPixelColor(3, pixels.Color(100, 100, 100));
   pixels.show();
 }
 
 void showBackwardLights() {
   pixels.clear();
-  pixels.setPixelColor(1, pixels.Color(100, 0, 0)); // back-right = red
-  pixels.setPixelColor(0, pixels.Color(100, 0, 0)); // back-left  = red
+  pixels.setPixelColor(1, pixels.Color(100, 0, 0));
+  pixels.setPixelColor(0, pixels.Color(100, 0, 0));
   pixels.show();
 }
 
 void showLeftLights() {
   pixels.clear();
-  pixels.setPixelColor(3, pixels.Color(65, 40, 0)); // front-left = orange
+  pixels.setPixelColor(3, pixels.Color(65, 40, 0));
   pixels.show();
 }
 
 void showRightLights() {
   pixels.clear();
-  pixels.setPixelColor(2, pixels.Color(65, 40, 0)); // front-right = orange
+  pixels.setPixelColor(2, pixels.Color(65, 40, 0));
   pixels.show();
 }
