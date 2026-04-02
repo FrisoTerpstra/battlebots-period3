@@ -3,11 +3,27 @@
 // ==========================================
 
 #include <Adafruit_NeoPixel.h>
+#include <Servo.h>
 
 // --- NEOPIXEL ---
 #define LED_PIN  7
 #define NUM_LEDS 4
 Adafruit_NeoPixel pixels(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+// --- GRIPPER / ULTRASONIC ---
+const int GRIPPER_PIN          = 10;
+const int TRIG_PIN             = 11;
+const int ECHO_PIN             = 12;
+const int OBJECT_DISTANCE_CM   = 50;
+
+Servo gripper;
+const int GRIPPER_OPEN_US   = 1800;
+const int GRIPPER_CLOSED_US = 1000;
+
+const unsigned long START_FORWARD_1 = 1400;
+const unsigned long START_GRAB_WAIT = 800;
+const unsigned long START_TURN_LEFT = 600;
+const unsigned long START_FORWARD_2 = 1000;
 
 // --- MOTOR PIN DEFINITIONS ---
 const int MOTOR_A_1 = 3;
@@ -24,7 +40,7 @@ int threshold = 850;
 
 // --- RACE SPEED CALIBRATION ---
 int leftSpeed  = 255;
-int rightSpeed = 250;
+int rightSpeed = 247;
 
 // --- CORRECTION LEVELS ---
 int microCorrection  = 20;
@@ -39,7 +55,7 @@ unsigned long raceStartTime = 0;
 
 // --- MAZE TIMING ---
 const unsigned long CROSSING_TIME       = 200;
-const unsigned long TURN_90_TIME        = 400;
+const unsigned long TURN_90_TIME        = 500;
 const unsigned long TURN_180_TIME       = 800;
 const unsigned long ignoreFinishTime    = 1000;
 const unsigned long FINISH_CONFIRM_TIME = 75;
@@ -50,6 +66,10 @@ const int DEAD_END_LIMIT = 10;
 
 // --- FINISH DETECTED FLAG ---
 bool finishDetected = false;
+
+// --- OBJECT AVOIDANCE ---
+bool mazeStarted = false;
+const int AVOID_DISTANCE_CM = 15;
 
 // --- STATE MACHINE ---
 enum State {
@@ -71,6 +91,43 @@ unsigned long previousLoopTime = 0;
 const long LOOP_INTERVAL = 10;
 
 // -------------------------------------------------------
+// ULTRASONIC
+// -------------------------------------------------------
+
+long getDistanceCM() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+  if (duration == 0) return 999;
+  return duration * 0.034 / 2;
+}
+
+bool obstacleAhead() {
+  if (!mazeStarted) return false;
+
+  long distance = getDistanceCM();
+  Serial.print("Obstacle distance: ");
+  Serial.println(distance);
+
+  return (distance > 0 && distance <= AVOID_DISTANCE_CM);
+}
+
+// -------------------------------------------------------
+// GRIPPER
+// -------------------------------------------------------
+
+void openGripper() {
+  gripper.writeMicroseconds(GRIPPER_OPEN_US);
+}
+
+void closeGripper() {
+  gripper.writeMicroseconds(GRIPPER_CLOSED_US);
+}
+
+// -------------------------------------------------------
 // SETUP
 // -------------------------------------------------------
 
@@ -79,6 +136,8 @@ void setup() {
   pinMode(MOTOR_A_2, OUTPUT);
   pinMode(MOTOR_B_1, OUTPUT);
   pinMode(MOTOR_B_2, OUTPUT);
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
 
   for (int i = 0; i < 8; i++) {
     pinMode(SENSOR_PINS[i], INPUT);
@@ -88,7 +147,39 @@ void setup() {
   pixels.clear();
   pixels.show();
 
+  Serial.begin(9600);
+
+  gripper.attach(GRIPPER_PIN);
+  openGripper();
+
+  stopMotors();
+
+  while (true) {
+    long distance = getDistanceCM();
+    if (distance <= OBJECT_DISTANCE_CM) {
+      break;
+    }
+    delay(50);
+  }
+
+  delay(3000);
+  forward();
+  delay(START_FORWARD_1);
+
+  stopMotors();
+  closeGripper();
+  delay(START_GRAB_WAIT);
+
+  rotateMotorsLeft();
+  delay(START_TURN_LEFT);
+
+  forward();
+  delay(START_FORWARD_2);
+
+  stopMotors();
+
   raceStartTime = millis();
+  mazeStarted = true;
 }
 
 // -------------------------------------------------------
@@ -264,7 +355,14 @@ void loop() {
     switch (state) {
 
       case FOLLOW:
-        if (atFinishPattern()
+        if (obstacleAhead()) {
+          stopMotors();
+          pendingTurn = 2;
+          state = TURNING;
+          stateTimer = currentTime;
+          break;
+        }
+        else if (atFinishPattern()
             && !atJunction()
             && (currentTime - raceStartTime > ignoreFinishTime)) {
           if (!finishDetected) {
@@ -378,20 +476,15 @@ void loop() {
 
       case BACKUP:
         showReverseLights();
-        if (currentTime - stateTimer < 800) {
-          analogWrite(MOTOR_A_1, 215);
-          analogWrite(MOTOR_A_2, 0);
-          analogWrite(MOTOR_B_1, 0);
-          analogWrite(MOTOR_B_2, 210);
+        if (currentTime - stateTimer < 700) {
+          reverseMotors();
         }
-        else if (currentTime - stateTimer < 1800) {
+        else if (currentTime - stateTimer < 1200) {
           stopMotors();
+          openGripper();
         }
-        else if (currentTime - stateTimer < 3500) {
-          analogWrite(MOTOR_A_1, 215);
-          analogWrite(MOTOR_A_2, 0);
-          analogWrite(MOTOR_B_1, 0);
-          analogWrite(MOTOR_B_2, 210);
+        else if (currentTime - stateTimer < 3000) {
+          reverseMotors();
         }
         else {
           state = COMPLETED;
@@ -411,41 +504,64 @@ void loop() {
 // -------------------------------------------------------
 
 void forward() {
-  analogWrite(MOTOR_A_1, 0);          analogWrite(MOTOR_A_2, leftSpeed);
-  analogWrite(MOTOR_B_1, rightSpeed); analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, leftSpeed);
+  analogWrite(MOTOR_B_1, rightSpeed);
+  analogWrite(MOTOR_B_2, 0);
 }
 
 void turnLeftGentle() {
-  analogWrite(MOTOR_A_1, 0);                             analogWrite(MOTOR_A_2, leftSpeed - gentleCorrection);
-  analogWrite(MOTOR_B_1, rightSpeed);                    analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, 255 - gentleCorrection);
+  analogWrite(MOTOR_B_1, 255);
+  analogWrite(MOTOR_B_2, 0);
 }
 
 void turnRightGentle() {
-  analogWrite(MOTOR_A_1, 0);                             analogWrite(MOTOR_A_2, leftSpeed);
-  analogWrite(MOTOR_B_1, rightSpeed - gentleCorrection); analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, 255);
+  analogWrite(MOTOR_B_1, 255 - gentleCorrection);
+  analogWrite(MOTOR_B_2, 0);
 }
 
 void turnLeftMedium() {
-  analogWrite(MOTOR_A_1, 0);                             analogWrite(MOTOR_A_2, leftSpeed - mediumCorrection);
-  analogWrite(MOTOR_B_1, rightSpeed);                    analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, 255 - mediumCorrection);
+  analogWrite(MOTOR_B_1, 255);
+  analogWrite(MOTOR_B_2, 0);
 }
 
 void turnRightMedium() {
-  analogWrite(MOTOR_A_1, 0);                             analogWrite(MOTOR_A_2, leftSpeed);
-  analogWrite(MOTOR_B_1, rightSpeed - mediumCorrection); analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, 255);
+  analogWrite(MOTOR_B_1, 255 - mediumCorrection);
+  analogWrite(MOTOR_B_2, 0);
 }
 
 void rotateMotorsLeft() {
-  analogWrite(MOTOR_A_1, leftSpeed);  analogWrite(MOTOR_A_2, 0);
-  analogWrite(MOTOR_B_1, rightSpeed); analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 255);
+  analogWrite(MOTOR_A_2, 0);
+  analogWrite(MOTOR_B_1, 255);
+  analogWrite(MOTOR_B_2, 0);
 }
 
 void rotateMotorsRight() {
-  analogWrite(MOTOR_A_1, 0);          analogWrite(MOTOR_A_2, leftSpeed);
-  analogWrite(MOTOR_B_1, 0);          analogWrite(MOTOR_B_2, rightSpeed);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, 255);
+  analogWrite(MOTOR_B_1, 0);
+  analogWrite(MOTOR_B_2, 255);
+}
+
+void reverseMotors() {
+  analogWrite(MOTOR_A_1, 255);
+  analogWrite(MOTOR_A_2, 0);
+  analogWrite(MOTOR_B_1, 0);
+  analogWrite(MOTOR_B_2, 255);
 }
 
 void stopMotors() {
-  analogWrite(MOTOR_A_1, 0); analogWrite(MOTOR_A_2, 0);
-  analogWrite(MOTOR_B_1, 0); analogWrite(MOTOR_B_2, 0);
+  analogWrite(MOTOR_A_1, 0);
+  analogWrite(MOTOR_A_2, 0);
+  analogWrite(MOTOR_B_1, 0);
+  analogWrite(MOTOR_B_2, 0);
 }
