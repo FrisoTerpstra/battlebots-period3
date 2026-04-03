@@ -2,25 +2,25 @@
 // MAZE LINE FOLLOWER — CASCADE VERSION
 // ==========================================
 
-#include <Adafruit_NeoPixel.h>
+#include <Adafruit_NeoPixel.h> // Libraries
 #include <Servo.h>
 
 // --- NEOPIXEL ---
-#define LED_PIN  7
-#define NUM_LEDS 4
-Adafruit_NeoPixel pixels(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
+#define LED_PIN  7 // what pin is used
+#define NUM_LEDS 4 // number of leds
+Adafruit_NeoPixel pixels(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800); // needed for neopixels
 
 // --- GRIPPER / ULTRASONIC ---
 const int GRIPPER_PIN          = 10;
 const int TRIG_PIN             = 11;
 const int ECHO_PIN             = 12;
-const int OBJECT_DISTANCE_CM   = 50;
+const int OBJECT_DISTANCE_CM   = 50; // treshold from what distance it sees the cone and picks it up
 
 Servo gripper;
-const int GRIPPER_OPEN_US   = 1800;
+const int GRIPPER_OPEN_US   = 1800; // pusle lenght
 const int GRIPPER_CLOSED_US = 1000;
 
-const unsigned long START_FORWARD_1 = 1400;
+const unsigned long START_FORWARD_1 = 1400; // values for the beginning of race
 const unsigned long START_GRAB_WAIT = 800;
 const unsigned long START_TURN_LEFT = 600;
 const unsigned long START_FORWARD_2 = 1000;
@@ -32,7 +32,7 @@ const int MOTOR_B_1 = 6;
 const int MOTOR_B_2 = 9;
 
 // --- SENSOR MAPPING ---
-const int SENSOR_PINS[] = {A0, A1, A2, A3, A4, A5, A6, A7};
+const int SENSOR_PINS[] = {A0, A1, A2, A3, A4, A5, A6, A7}; // pins for sensors start at 0 because it is an array
 int val[8];
 
 // --- SENSITIVITY CALIBRATION ---
@@ -55,7 +55,7 @@ unsigned long raceStartTime = 0;
 
 // --- MAZE TIMING ---
 const unsigned long CROSSING_TIME       = 200;
-const unsigned long TURN_90_TIME        = 500;
+const unsigned long TURN_90_TIME        = 500; // how long it rotates in a 90 and 180 degree turn (should be calibrated correct)
 const unsigned long TURN_180_TIME       = 800;
 const unsigned long ignoreFinishTime    = 1000;
 const unsigned long FINISH_CONFIRM_TIME = 75;
@@ -69,7 +69,7 @@ bool finishDetected = false;
 
 // --- OBJECT AVOIDANCE ---
 bool mazeStarted = false;
-const int AVOID_DISTANCE_CM = 15;
+const int AVOID_DISTANCE_CM = 15; // distance to see an object and avoid it
 
 // --- STATE MACHINE ---
 enum State {
@@ -100,7 +100,7 @@ long getDistanceCM() {
   digitalWrite(TRIG_PIN, HIGH);
   delayMicroseconds(10);
   digitalWrite(TRIG_PIN, LOW);
-  long duration = pulseIn(ECHO_PIN, HIGH, 30000);
+  long duration = pulseIn(ECHO_PIN, HIGH, 30000); // calculate distance
   if (duration == 0) return 999;
   return duration * 0.034 / 2;
 }
@@ -143,7 +143,7 @@ void setup() {
     pinMode(SENSOR_PINS[i], INPUT);
   }
 
-  pixels.begin();
+  pixels.begin(); // to make the pixels work
   pixels.clear();
   pixels.show();
 
@@ -156,13 +156,13 @@ void setup() {
 
   while (true) {
     long distance = getDistanceCM();
-    if (distance <= OBJECT_DISTANCE_CM) {
+    if (distance <= OBJECT_DISTANCE_CM) { // check if something is infront of it
       break;
     }
     delay(50);
   }
 
-  delay(3000);
+  delay(3000); // wait for the other robot to leave then do the beginning code
   forward();
   delay(START_FORWARD_1);
 
@@ -186,7 +186,7 @@ void setup() {
 // LED FUNCTIONS
 // -------------------------------------------------------
 
-void showForwardLights() {
+void showForwardLights() { // for the neopixels
   pixels.clear();
   pixels.setPixelColor(2, pixels.Color(100, 100, 100));
   pixels.setPixelColor(3, pixels.Color(100, 100, 100));
@@ -238,7 +238,7 @@ int countActive() {
   return n;
 }
 
-bool centerActive() {
+bool centerActive() { // check the sensors to see which ones are seen and react on that
   return on(2) || on(3) || on(4) || on(5);
 }
 
@@ -342,8 +342,8 @@ void followLine() {
 // MAIN LOOP
 // -------------------------------------------------------
 
-void loop() {
-  unsigned long currentTime = millis();
+void loop() { // change states to givin situations
+  unsigned long currentTime = millis(); 
 
   if (currentTime - previousLoopTime >= LOOP_INTERVAL) {
     previousLoopTime = currentTime;
@@ -503,7 +503,7 @@ void loop() {
 // MOTOR FUNCTIONS
 // -------------------------------------------------------
 
-void forward() {
+void forward() { // simple functions to clear up code
   analogWrite(MOTOR_A_1, 0);
   analogWrite(MOTOR_A_2, leftSpeed);
   analogWrite(MOTOR_B_1, rightSpeed);
